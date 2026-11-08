@@ -1,6 +1,5 @@
 import os
 import glob
-import re
 import numpy as np
 import pandas as pd
 from scapy.all import PcapReader, IP, TCP, UDP, ICMP
@@ -9,6 +8,9 @@ from datetime import datetime, timezone, timedelta
 # Zona waktu dataset
 AST_TZ = timezone(timedelta(hours=-4))
 ADT_TZ = timezone(timedelta(hours=-3))
+BUANG_CELAH = True
+ATTACKER_IPS = {"172.16.0.5"}
+VICTIM_IPS = {"192.168.50.1", "192.168.50.4"}
 
 def urutkan_angka_asli(filepath):
     fname = os.path.basename(filepath)
@@ -18,13 +20,12 @@ def urutkan_angka_asli(filepath):
     return (tanggal, nomor)
 
 def get_label(ts, src_ip, dst_ip, fname):
-    attacker_ips = {"172.16.0.5"}
-    victim_ips = {"192.168.50.1", "192.168.50.4"}
-
-    if not ((src_ip in attacker_ips and dst_ip in victim_ips) or
-            (src_ip in victim_ips and dst_ip in attacker_ips)):
+    # Traffic dari IP lain
+    if not ((src_ip in ATTACKER_IPS and dst_ip in VICTIM_IPS) or
+            (src_ip in VICTIM_IPS and dst_ip in ATTACKER_IPS)):
         return "Benign"
 
+    # Pasangan attacker<->victim
     if "01-12-2018" in fname:
         dt = datetime.fromtimestamp(ts, tz=AST_TZ)
         hm = dt.hour * 60 + dt.minute
@@ -39,7 +40,7 @@ def get_label(ts, src_ip, dst_ip, fname):
         elif 13*60+11 <= hm <= 13*60+27: return "UDP-lag"
         elif 13*60+28 <= hm <= 13*60+34: return "Syn"
         elif hm >= 13*60+35: return "TFTP"
-        else: return "Benign"
+        else: return "CELAH"
     else:
         # Hari Kedua
         dt = datetime.fromtimestamp(ts, tz=ADT_TZ)
@@ -51,13 +52,12 @@ def get_label(ts, src_ip, dst_ip, fname):
         elif 11*60+28 <= hm <= 11*60+59: return "UDP"
         elif 12*60+0 <= hm <= 12*60+28: return "UDP-lag"
         elif hm >= 12*60+29: return "Syn"
-        else: return "Benign"
+        else: return "CELAH"
 
 def compute_44_features(pkts, label):
     n = len(pkts)
     if n == 0:
         return None
-
     ts_list = np.array([p['ts'] for p in pkts], dtype=np.float64)
     sizes = np.array([p['size'] for p in pkts], dtype=np.float64)
     hdrs = np.array([p['hdr_len'] for p in pkts], dtype=np.float64)
@@ -130,12 +130,12 @@ def compute_44_features(pkts, label):
         "Label": label
     }
 
+
 def process_all_pcaps(folder="data_mentah", out_dir="csv_mentah", max_pkts_per_file=30000, window_size=50, batch_save_files=25):
     os.makedirs(out_dir, exist_ok=True)
     out_csv = os.path.join(out_dir, "dataset_44fitur_raw.csv")
     out_parquet = os.path.join(out_dir, "dataset_44fitur_raw.parquet")
-
-    # Bersihkan file CSV lama jika ada sebelum mulai
+    # Bersihkan file CSV
     if os.path.exists(out_csv):
         os.remove(out_csv)
 
@@ -143,10 +143,14 @@ def process_all_pcaps(folder="data_mentah", out_dir="csv_mentah", max_pkts_per_f
     all_files = sorted(glob.glob(os.path.join(folder, "SAT-*")), key=urutkan_angka_asli)
     total_files = len(all_files)
     print(f"Total PCAP terdeteksi: {total_files} Memproses seluruh file secara berurutan")
+    print(f"BUANG_CELAH = {BUANG_CELAH}")
     buffer_rows = []
     total_baris_tersimpan = 0
     header_written = False
 
+    # Counter diagnosa
+    paket_benign_lain = 0
+    paket_celah = 0
     for idx, fpath in enumerate(all_files, 1):
         fname = os.path.basename(fpath)
         buffers = {}
@@ -166,7 +170,6 @@ def process_all_pcaps(folder="data_mentah", out_dir="csv_mentah", max_pkts_per_f
                     sport, dport = 0, 0
                     fin = syn = rst = psh = ack = ece = cwr = 0
                     is_tcp = is_udp = is_icmp = 0
-
                     if TCP in pkt:
                         is_tcp = 1
                         sport, dport = pkt[TCP].sport, pkt[TCP].dport
@@ -186,6 +189,15 @@ def process_all_pcaps(folder="data_mentah", out_dir="csv_mentah", max_pkts_per_f
                     ports = {sport, dport}
                     label = get_label(ts, src, dst, fname)
 
+                    if label == "CELAH":
+                        paket_celah += 1
+                        if BUANG_CELAH:
+                            if pkt_count >= max_pkts_per_file:
+                                break
+                            continue
+                        label = "Benign"
+                    elif label == "Benign":
+                        paket_benign_lain += 1
                     pair_key = (tuple(sorted([src, dst])), label)
                     direction = 1 if src <= dst else 0
                     if pair_key not in buffers:
@@ -210,18 +222,17 @@ def process_all_pcaps(folder="data_mentah", out_dir="csv_mentah", max_pkts_per_f
                         buffers[pair_key] = []
                     if pkt_count >= max_pkts_per_file:
                         break
-
             for (_, label), pkts_left in buffers.items():
                 if len(pkts_left) >= 5:
                     row = compute_44_features(pkts_left, label)
                     if row:
                         buffer_rows.append(row)
-            print(f"[{idx}/{total_files}] Selesai {fname} | Total di buffer: {len(buffer_rows)}")
-
+            print(f"[{idx}/{total_files}] Selesai {fname} | Total di buffer: {len(buffer_rows)} | "
+                  f"paket celah: {paket_celah:,} | paket benign murni: {paket_benign_lain:,}")
         except Exception as e:
             print(f"[{idx}/{total_files}] Skip {fname} karena error: {e}")
 
-        # Simpan bertahap setiap batch_save_files
+        # Simpan bertahap
         if idx % batch_save_files == 0 and buffer_rows:
             batch_df = pd.DataFrame(buffer_rows)
             batch_df.to_csv(out_csv, mode='a', index=False, header=not header_written)
@@ -229,14 +240,15 @@ def process_all_pcaps(folder="data_mentah", out_dir="csv_mentah", max_pkts_per_f
             total_baris_tersimpan += len(buffer_rows)
             print(f"{len(buffer_rows)} baris disimpan ke CSV (Total saat ini: {total_baris_tersimpan})")
             buffer_rows = []
-
-    # Tulis sisa baris terakhir
     if buffer_rows:
         batch_df = pd.DataFrame(buffer_rows)
         batch_df.to_csv(out_csv, mode='a', index=False, header=not header_written)
         total_baris_tersimpan += len(buffer_rows)
 
     print(f"\nSemua file PCAP selesai diproses! Total akhir: {total_baris_tersimpan} baris.")
+    print(f"Diagnosa label (jumlah paket): benign murni (bukan attacker<->victim) = {paket_benign_lain:,} | "
+          f"attacker<->victim di luar jendela jam (celah) = {paket_celah:,} "
+          f"({'DIBUANG' if BUANG_CELAH else 'dilabel Benign'})")
     # Konversi hasil akhir CSV ke Parquet
     print(f"Mengonversi {out_csv} ke {out_parquet}")
     final_df = pd.read_csv(out_csv)
@@ -244,6 +256,7 @@ def process_all_pcaps(folder="data_mentah", out_dir="csv_mentah", max_pkts_per_f
     print("\nDistribusi Kelas Serangan Lengkap:")
     print(final_df['Label'].value_counts())
     print(f"\nSukses File utuh tersimpan di:\n1. {out_csv}\n2. {out_parquet}")
+
 
 if __name__ == "__main__":
     process_all_pcaps(
