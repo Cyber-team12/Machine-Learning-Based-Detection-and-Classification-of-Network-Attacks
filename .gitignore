@@ -5,3 +5,4 @@ __pycache__/
 *.parquet
 model_lgb_final_44fitur_v_*.txt
 csv_bersih_waktu/
+hasil_prediksi.csv

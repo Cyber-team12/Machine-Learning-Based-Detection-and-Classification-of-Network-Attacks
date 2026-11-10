@@ -1,3 +1,5 @@
+import json
+import os
 import numpy as np
 import lightgbm as lgb
 from train import baca_csv
@@ -5,11 +7,20 @@ from train import baca_csv
 MODEL = "model_lgb_final_44fitur.txt"
 TEST_CSV = "csv_bersih/dataset_clean_test.csv"
 TRAIN_CSV = "csv_bersih/dataset_clean_train.csv"
-THRESHOLD = 0.5
 KELAS = ["Syn", "TFTP", "MSSQL", "DrDoS_NTP"]
 FITUR = ["Srate", "Rate", "AVG", "flow_duration"]
 
+def baca_threshold(model_path):
+    tpath = model_path + ".threshold.json"
+    if os.path.exists(tpath):
+        with open(tpath) as f:
+            return json.load(f)["threshold"]
+    return 0.5
+
+THRESHOLD = baca_threshold(MODEL)
+
 def main():
+    print(f"Threshold dipakai: {THRESHOLD}")
     x, y, lbl, fitur = baca_csv(TEST_CSV)
     lbl = np.array(lbl)
     p = lgb.Booster(model_file=MODEL).predict(x)
@@ -29,7 +40,7 @@ def main():
         if n_lolos == 0:
             print()
             continue
-        frac = np.where(lolos_mask)[0] / n 
+        frac = np.where(lolos_mask)[0] / n
         print(f"posisi lolos dalam urutan waktu: min={frac.min():.2f} median={np.median(frac):.2f} max={frac.max():.2f}")
         print(f"skor model baris lolos: median={np.median(p[pos][lolos_mask]):.3f}")
         for nama, m in [("lolos", lolos_mask), ("terdeteksi", ~lolos_mask)]:
