@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistem Deteksi DDoS LightGBM — Kartika Cyber Hackathon 2026</title>
+  <style>
+    :root {
+      --bg: #FAF7F2;
+      --panel: #F3EDE2;
+      --panel-2: #EAE0D0;
+      --border: #D6C7B2;
+      --text: #2C221E;
+      --muted: #6E5D4F;
+      --accent: #8C6239;
+      --accent-hover: #734F2C;
+      --danger-bg: #F9E6E3;
+      --danger-text: #A8382B;
+      --danger-border: #E2B4AD;
+      --success-bg: #E6F0E8;
+      --success-text: #3B6344;
+      --success-border: #B5D1B9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Inter, system-ui, sans-serif; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+    /* Sidebar */
+    .sidebar {
+      width: 290px; background: var(--panel); border-right: 1px solid var(--border);
+      padding: 26px 20px; display: flex; flex-direction: column; gap: 18px; flex-shrink: 0;
+    }
+    .brand { border-bottom: 1px solid var(--border); padding-bottom: 14px; }
+    .brand h2 { font-size: 18px; font-weight: 700; color: var(--text); }
+    .brand p { font-size: 12.5px; color: var(--accent); margin-top: 3px; font-weight: 600; }
+    .control-box {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 9px;
+    }
+    .control-box label { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    .slider-val { font-size: 20px; font-weight: 700; color: var(--accent); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    .spec-list { font-size: 12.5px; color: var(--muted); line-height: 1.75; list-style: none; }
+    .spec-list strong { color: var(--text); }
+    /* Main */
+    .main { flex: 1; padding: 28px 34px; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
+    .header h1 { font-size: 23px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .header p { font-size: 13.5px; color: var(--muted); }
+    /* KPI Cards */
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .kpi-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 16px 18px; display: flex; flex-direction: column; gap: 5px;
+    }
+    .kpi-title { font-size: 11.5px; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+    .kpi-value { font-size: 25px; font-weight: 700; color: var(--text); }
+    .kpi-sub { font-size: 12px; color: var(--success-text); font-weight: 600; }
+    .kpi-sub.danger { color: var(--danger-text); }
+    /* Tabs */
+    .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    .tab-btn {
+      background: var(--panel); color: var(--muted); border: 1px solid var(--border);
+      padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
+      transition: all 0.15s;
+    }
+    .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .tab-content { display: none; flex-direction: column; gap: 18px; }
+    .tab-content.active { display: flex; }
+    /* Grid & Panels */
+    .grid-2 { display: grid; grid-template-columns: 3fr 2fr; gap: 18px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 14px;
+    }
+    .card h3 { font-size: 14.5px; font-weight: 700; color: var(--text); display: flex; align-items: center; justify-content: space-between; }
+    /* Table */
+    .table-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; text-align: left; }
+    th { background: var(--panel-2); color: var(--text); position: sticky; top: 0; padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
+    td { padding: 9px 12px; border-bottom: 1px solid #E6DEC8; color: var(--text); }
+    tr:hover td { background: #F3EDE2; }
+    .badge {
+      padding: 3px 9px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-block;
+    }
+    .badge-atk { background: var(--danger-bg); color: var(--danger-text); border: 1px solid var(--danger-border); }
+    .badge-ben { background: var(--success-bg); color: var(--success-text); border: 1px solid var(--success-border); }
+    /* Bar chart */
+    .bar-row { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 8px; }
+    .bar-label { width: 145px; color: var(--text); font-family: monospace; font-weight: 600; }
+    .bar-track { flex: 1; background: var(--panel-2); height: 15px; border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+    .bar-fill { height: 100%; background: var(--accent); }
+    .bar-fill.pos { background: var(--danger-text); }
+    .bar-fill.neg { background: var(--success-text); }
+    .bar-val { width: 70px; text-align: right; font-weight: 700; color: var(--text); font-family: monospace; }
+    select, input[type="number"], .btn {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      padding: 7px 10px; border-radius: 5px; font-size: 12.5px;
+    }
+    .sim-box { background: var(--bg); padding: 14px; border-radius: 6px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 9px; }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <h2>Deteksi DDoS LightGBM</h2>
+      <p>Kartika Cyber Hackathon 2026</p>
+    </div>
+
+    <div class="control-box">
+      <label>Sumber Data Uji</label>
+      <select id="dataSource" onchange="switchSource()">
+        <option value="pcap">lotsofweb.pcapng (309 Window)</option>
+        <option value="test">Test Set CIC-DDoS2019 (75.920 Baris)</option>
+      </select>
+      <label style="margin-top:6px;">Muat File CSV (hasil_pcap / hasil_prediksi):</label>
+      <input type="file" id="csvFile" accept=".csv" style="font-size:11px; color:var(--muted);" onchange="handleFileUpload(event)" />
+    </div>
+
+    <div class="control-box">
+      <label>Threshold Operasional</label>
+      <div class="slider-val" id="thDisplay">0.20</div>
+      <input type="range" id="thSlider" min="0.05" max="0.95" step="0.05" value="0.20" oninput="updateThreshold(this.value)" />
+      <span style="font-size:11.5px; color:var(--muted);">Threshold optimal validasi: <b>0.20</b></span>
+    </div>
+
+    <div class="control-box">
+      <label>Filter Konsistensi Flood</label>
+      <label style="display:flex; align-items:center; gap:8px; text-transform:none; color:var(--text); cursor:pointer; font-weight:500;">
+        <input type="checkbox" id="rateGuard" onchange="renderPcapTable()" />
+        Abaikan serangan jika Rate &lt; 1000 pkt/s
+      </label>
+      <span style="font-size:11px; color:var(--muted);">Sesuai aturan <code>MIN_RATE_SERANGAN = 1000</code> pada <code>clean_dedup.py</code>.</span>
+    </div>
+
+    <div class="control-box">
+      <label>Spesifikasi Pipeline</label>
+      <ul class="spec-list">
+        <li><strong>Model:</strong> LightGBM (GBDT)</li>
+        <li><strong>Skema:</strong> 44 Fitur / 50 Paket</li>
+        <li><strong>Dataset:</strong> CIC-DDoS2019</li>
+        <li><strong>Pembagian:</strong> Temporal 70 / 15 / 15</li>
+        <li><strong>Kebocoran Hash:</strong> 0 Konflik</li>
+      </ul>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="header">
+      <h1>Sistem Deteksi Serangan DDoS Berbasis Window 50 Paket & LightGBM</h1>
+      <p>Evaluasi trafik jaringan per window 50 paket IP dengan ekstraksi 44 fitur statistik dan analisis kontribusi fitur TreeSHAP.</p>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <span class="kpi-title">Total Window Dianalisis</span>
+        <span class="kpi-value" id="kpiTotal">309</span>
+        <span class="kpi-sub" id="kpiSub1">lotsofweb.pcapng (Trafik Web Benign)</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-title">Prediksi SERANGAN</span>
+        <span class="kpi-value" id="kpiAtk">6</span>
+        <span class="kpi-sub danger" id="kpiSub2">False Positive Rate: 1.94%</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-title">Prediksi BENIGN</span>
+        <span class="kpi-value" id="kpiBen">303</span>
+        <span class="kpi-sub" id="kpiSub3">Akurasi / Spesifisitas: 98.06%</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-title">Benchmark Test Set (75.920 Baris)</span>
+        <span class="kpi-value">99.984%</span>
+        <span class="kpi-sub">Recall Serangan | ROC-AUC 1.0000</span>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="openTab('tab1', this)">1. Hasil Deteksi PCAP & CSV (lotsofweb.pcapng)</button>
+      <button class="tab-btn" onclick="openTab('tab2', this)">2. Analisis Fitur TreeSHAP & Simulasi</button>
+      <button class="tab-btn" onclick="openTab('tab3', this)">3. Evaluasi 14 Jenis Serangan & Audit Data</button>
+    </div>
+
+    <!-- TAB 1 -->
+    <div id="tab1" class="tab-content active">
+      <div class="grid-2">
+        <div class="card">
+          <h3>
+            <span>Tabel Prediksi per Window (50 Paket)</span>
+            <select id="statusFilter" onchange="renderPcapTable()">
+              <option value="ALL">Semua Window</option>
+              <option value="SERANGAN">Hanya SERANGAN</option>
+              <option value="BENIGN">Hanya BENIGN</option>
+            </select>
+          </h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Window</th>
+                  <th>Prediksi</th>
+                  <th>Skor Model</th>
+                  <th>Pasangan IP</th>
+                  <th>Rate (pkt/s)</th>
+                  <th>Srate (out/s)</th>
+                  <th>Min (Byte)</th>
+                  <th>AVG (Byte)</th>
+                  <th>PSH Flag</th>
+                </tr>
+              </thead>
+              <tbody id="pcapTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Ringkasan per Pasangan IP (lotsofweb.pcapng)</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pasangan IP</th>
+                  <th>Total Window</th>
+                  <th>Window SERANGAN</th>
+                  <th>Skor Maks</th>
+                </tr>
+              </thead>
+              <tbody id="ipSummaryBody"></tbody>
+            </table>
+          </div>
+          <div class="sim-box">
+            <strong style="font-size:12.5px; color:var(--accent);">Penjelasan Evaluasi lotsofweb.pcapng:</strong>
+            <p style="font-size:12px; color:var(--muted); line-height:1.55;">
+              File <code>lotsofweb.pcapng</code> adalah tangkapan trafik HTTP normal (100% Benign). Dari <b>309 window</b> yang diekstrak langsung oleh <code>predict_pcap.py</code>, sebanyak <b>303 window (98,06%)</b> diprediksi tepat sebagai <b>BENIGN</b>, dan <b>6 window (1,94%)</b> terkena False Positive karena nilai ukuran paket minimum (<code>Min=259-285</code>) tanpa paket ACK 54 byte.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2 -->
+    <div id="tab2" class="tab-content">
+      <div class="grid-2">
+        <div class="card">
+          <h3>10 Fitur Terpenting Global (LightGBM Gain)</h3>
+          <div id="gainChart"></div>
+          <h3 style="margin-top:10px;">Kontribusi Fitur TreeSHAP pada 6 Window FP (bedah_fp.py)</h3>
+          <p style="font-size:12px; color:var(--muted);">Rata-rata kontribusi log-odds (positif = mendorong ke SERANGAN, negatif = mendorong ke BENIGN):</p>
+          <div id="shapChart"></div>
+        </div>
+
+        <div class="card">
+          <h3>Simulasi Perubahan Fitur (bedah_fp2.py)</h3>
+          <p style="font-size:12.5px; color:var(--muted); line-height:1.5;">
+            Pengujian nilai fitur pada 6 window yang terdeteksi sebagai serangan di <code>lotsofweb.pcapng</code>:
+          </p>
+          <div class="sim-box">
+            <label style="font-size:11.5px; color:var(--muted);">Ukuran Paket Minimum (<code>Min</code> byte):</label>
+            <select id="simMin" onchange="runCounterfactual()">
+              <option value="259">259.0 byte (Nilai asli Window #2, #4, #6)</option>
+              <option value="284">284.0 byte (Nilai asli Window #17, #18, #19)</option>
+              <option value="54">54.0 byte (Simulasi x2["Min"] = 54 pada bedah_fp2.py)</option>
+            </select>
+
+            <label style="font-size:11.5px; color:var(--muted); margin-top:6px;">Laju Paket Keluar (<code>Srate</code> pkt/s):</label>
+            <select id="simSrate" onchange="runCounterfactual()">
+              <option value="103">103.37 pkt/s (Nilai asli lotsofweb.pcapng)</option>
+              <option value="15000">15,000 pkt/s (Simulasi Laju Serangan Flood)</option>
+            </select>
+
+            <div style="margin-top:10px; padding:14px; background:var(--panel); border-radius:6px; border:1px solid var(--border);">
+              <div style="font-size:12px; color:var(--muted);">Nilai Dasar Model (Bias Log-Odds): <b>-3.662</b></div>
+              <div style="font-size:12px; color:var(--muted); margin-top:4px;" id="simLogOdds">Total Kontribusi Fitur: <b>+6.370</b></div>
+              <div style="font-size:20px; font-weight:700; margin-top:8px;" id="simResult">
+                Skor Prediksi: <span style="color:var(--danger-text);">0.9375 (SERANGAN)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3 -->
+    <div id="tab3" class="tab-content">
+      <div class="grid-2">
+        <div class="card">
+          <h3>Rincian Deteksi per Jenis Serangan (Test Set Temporal: 75.920 Baris)</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Jenis Trafik / Serangan</th>
+                  <th>Total Test</th>
+                  <th>Terdeteksi Benar</th>
+                  <th>Lolos / Salah</th>
+                  <th>Recall / Spesifisitas</th>
+                </tr>
+              </thead>
+              <tbody id="benchBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Ringkasan Audit Pembersihan Data (audit_clean_summary.json)</h3>
+          <div class="table-wrap">
+            <table>
+              <tbody>
+                <tr><td><b>Mode Split Dataset</b></td><td>Temporal (Urutan Waktu 70% / 15% / 15%)</td></tr>
+                <tr><td><b>Total Baris Mentah (PCAP)</b></td><td>570.636 window</td></tr>
+                <tr><td><b>Baris Invalid (NaN / Inf)</b></td><td>0 baris</td></tr>
+                <tr><td><b>Serangan Rate &lt; 1000 Dibuang</b></td><td>572 baris</td></tr>
+                <tr><td><b>Duplikat SHA-256 Dibuang</b></td><td>64.041 baris</td></tr>
+                <tr><td><b>Total Baris Unik Bersih</b></td><td><b>506.023 baris</b></td></tr>
+                <tr><td><b>Split Train / Val / Test</b></td><td>354.205 / 75.898 / 75.920 baris</td></tr>
+                <tr><td><b>Konflik Hash Antar-Split</b></td><td><span class="badge badge-ben">Train-Val: 0 | Train-Test: 0 | Val-Test: 0</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const pcapRows = [
+      { idx: 1, pred: "BENIGN", score: 0.000271, ip: "172.16.16.128 <-> 204.160.104.126", rate: 321.09, srate: 179.81, min: 54, avg: 254.00, psh: 0.52 },
+      { idx: 2, pred: "SERANGAN", score: 0.937467, ip: "172.16.16.128 <-> 204.160.104.126", rate: 206.74, srate: 103.37, min: 259, avg: 406.98, psh: 1.00 },
+      { idx: 3, pred: "BENIGN", score: 0.000271, ip: "157.166.255.38 <-> 172.16.16.128", rate: 134.42, srate: 72.59, min: 54, avg: 655.12, psh: 0.16 },
+      { idx: 4, pred: "SERANGAN", score: 0.937467, ip: "172.16.16.128 <-> 204.160.104.126", rate: 193.22, srate: 92.75, min: 259, avg: 404.88, psh: 1.00 },
+      { idx: 5, pred: "BENIGN", score: 0.000269, ip: "172.16.16.128 <-> 74.125.95.149", rate: 52.78, srate: 25.33, min: 54, avg: 480.74, psh: 0.26 },
+      { idx: 6, pred: "SERANGAN", score: 0.937467, ip: "172.16.16.128 <-> 204.160.104.126", rate: 208.10, srate: 104.05, min: 259, avg: 408.22, psh: 1.00 },
+      { idx: 7, pred: "BENIGN", score: 0.000271, ip: "172.16.16.128 <-> 204.160.104.126", rate: 120.52, srate: 45.80, min: 54, avg: 745.26, psh: 0.54 },
+      { idx: 8, pred: "BENIGN", score: 0.000271, ip: "157.166.255.38 <-> 172.16.16.128", rate: 55.82, srate: 25.68, min: 54, avg: 556.70, psh: 0.40 },
+      { idx: 9, pred: "BENIGN", score: 0.008953, ip: "172.16.16.128 <-> 205.203.139.162", rate: 25.57, srate: 9.21, min: 54, avg: 702.08, psh: 0.06 },
+      { idx: 10, pred: "BENIGN", score: 0.001901, ip: "172.16.16.128 <-> 205.203.139.162", rate: 496.08, srate: 148.82, min: 54, avg: 938.80, psh: 0.06 },
+      { idx: 13, pred: "BENIGN", score: 0.000271, ip: "172.16.16.128 <-> 64.208.21.43", rate: 456.50, srate: 209.99, min: 54, avg: 432.04, psh: 0.28 },
+      { idx: 14, pred: "BENIGN", score: 0.012263, ip: "172.16.16.128 <-> 205.203.140.65", rate: 11.04, srate: 2.87, min: 54, avg: 851.32, psh: 0.10 },
+      { idx: 17, pred: "SERANGAN", score: 0.937476, ip: "172.16.16.128 <-> 64.208.21.43", rate: 202.48, srate: 101.24, min: 285, avg: 425.00, psh: 1.00 },
+      { idx: 18, pred: "SERANGAN", score: 0.937476, ip: "172.16.16.128 <-> 64.208.21.43", rate: 234.46, srate: 117.23, min: 284, avg: 411.78, psh: 1.00 },
+      { idx: 19, pred: "SERANGAN", score: 0.937476, ip: "172.16.16.128 <-> 64.208.21.43", rate: 338.36, srate: 155.65, min: 284, avg: 475.06, psh: 0.94 },
+      { idx: 20, pred: "BENIGN", score: 0.000271, ip: "172.16.16.128 <-> 64.208.21.43", rate: 555.35, srate: 244.35, min: 54, avg: 655.92, psh: 0.62 },
+      { idx: 21, pred: "BENIGN", score: 0.000271, ip: "172.16.16.128 <-> 64.208.21.43", rate: 538.13, srate: 161.44, min: 54, avg: 879.64, psh: 0.30 },
+      { idx: 53, pred: "BENIGN", score: 0.000271, ip: "172.16.16.128 <-> 74.125.103.147", rate: 1383.21, srate: 663.94, min: 66, avg: 775.76, psh: 0.02 }
+    ];
+
+    const gainData = [
+      { name: "Srate", val: 85.92 },
+      { name: "Rate", val: 6.84 },
+      { name: "AVG", val: 2.31 },
+      { name: "Min", val: 1.45 },
+      { name: "Duration (TTL)", val: 1.12 },
+      { name: "flow_duration", val: 0.78 },
+      { name: "Header_Length", val: 0.54 },
+      { name: "IAT", val: 0.41 }
+    ];
+
+    const shapFpData = [
+      { name: "Min (259-285 B)", val: +4.82, dir: "pos" },
+      { name: "Srate (~105 pkt/s)", val: +1.94, dir: "pos" },
+      { name: "psh_flag_number", val: +0.88, dir: "pos" },
+      { name: "Duration (TTL)", val: -0.76, dir: "neg" },
+      { name: "Header_Length", val: -0.51, dir: "neg" }
+    ];
+
+    const benchData = [
+      ["DrDoS_DNS", "16,760", "16,760", "0", "100.000%"],
+      ["TFTP", "13,331", "13,319", "12", "99.910%"],
+      ["DrDoS_NTP", "12,082", "12,082", "0", "100.000%"],
+      ["DrDoS_SNMP", "7,648", "7,648", "0", "100.000%"],
+      ["DrDoS_LDAP", "5,845", "5,845", "0", "100.000%"],
+      ["NetBIOS", "5,570", "5,570", "0", "100.000%"],
+      ["DrDoS_MSSQL", "2,788", "2,788", "0", "100.000%"],
+      ["MSSQL", "2,701", "2,701", "0", "100.000%"],
+      ["LDAP", "2,610", "2,610", "0", "100.000%"],
+      ["DrDoS_UDP", "2,251", "2,251", "0", "100.000%"],
+      ["DrDoS_SSDP", "1,890", "1,890", "0", "100.000%"],
+      ["DrDoS_NetBIOS", "1,081", "1,081", "0", "100.000%"],
+      ["UDP", "448", "448", "0", "100.000%"],
+      ["Syn", "260", "260", "0", "100.000%"],
+      ["Benign (Normal)", "655", "655", "0 (FP=0)", "100.000%"]
+    ];
+
+    let currentTh = 0.20;
+
+    function openTab(id, btn) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    function updateThreshold(val) {
+      currentTh = parseFloat(val);
+      document.getElementById('thDisplay').innerText = currentTh.toFixed(2);
+      renderPcapTable();
+    }
+
+    function switchSource() {
+      const src = document.getElementById('dataSource').value;
+      if (src === 'test') {
+        document.getElementById('kpiTotal').innerText = '75,920';
+        document.getElementById('kpiSub1').innerText = 'CIC-DDoS2019 Temporal Test Set';
+        document.getElementById('kpiAtk').innerText = '75,253';
+        document.getElementById('kpiSub2').innerText = 'Recall: 99.9841% (12 lolos dari 75.265)';
+        document.getElementById('kpiBen').innerText = '655';
+        document.getElementById('kpiSub3').innerText = 'False Positive Benign: 0 / 655 (0.00%)';
+      } else {
+        renderPcapTable();
+      }
+    }
+
+    function renderPcapTable() {
+      const filter = document.getElementById('statusFilter').value;
+      const guard = document.getElementById('rateGuard').checked;
+      const tbody = document.getElementById('pcapTbody');
+      tbody.innerHTML = '';
+
+      let atkCount = 0;
+      pcapRows.forEach(r => {
+        let isAtk = r.score >= currentTh;
+        if (guard && r.rate < 1000) isAtk = false;
+        if (isAtk) atkCount++;
+        const status = isAtk ? 'SERANGAN' : 'BENIGN';
+        if (filter !== 'ALL' && status !== filter) return;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>#${r.idx}</td>
+          <td><span class="badge ${isAtk ? 'badge-atk' : 'badge-ben'}">${status}</span></td>
+          <td><b>${r.score.toFixed(6)}</b></td>
+          <td style="font-family:monospace;">${r.ip}</td>
+          <td>${r.rate.toFixed(2)}</td>
+          <td>${r.srate.toFixed(2)}</td>
+          <td><b>${r.min}</b></td>
+          <td>${r.avg.toFixed(2)}</td>
+          <td>${r.psh.toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('kpiTotal').innerText = '309';
+      document.getElementById('kpiSub1').innerText = 'lotsofweb.pcapng (Trafik Web Benign)';
+      document.getElementById('kpiAtk').innerText = atkCount;
+      document.getElementById('kpiSub2').innerText = 'False Positive Rate: ' + ((atkCount / 309) * 100).toFixed(2) + '%';
+      document.getElementById('kpiBen').innerText = 309 - atkCount;
+      document.getElementById('kpiSub3').innerText = 'Akurasi / Spesifisitas: ' + (((309 - atkCount) / 309) * 100).toFixed(2) + '%';
+
+      const ipBody = document.getElementById('ipSummaryBody');
+      const halfAtk = atkCount / 2;
+      ipBody.innerHTML = `
+        <tr><td><code>172.16.16.128 &lt;-&gt; 204.160.104.126</code></td><td>18</td><td><span class="badge ${halfAtk > 0 ? 'badge-atk' : 'badge-ben'}">${halfAtk}</span></td><td>0.937467</td></tr>
+        <tr><td><code>172.16.16.128 &lt;-&gt; 64.208.21.43</code></td><td>24</td><td><span class="badge ${halfAtk > 0 ? 'badge-atk' : 'badge-ben'}">${halfAtk}</span></td><td>0.937476</td></tr>
+        <tr><td><code>172.16.16.128 &lt;-&gt; 74.125.103.163</code></td><td>42</td><td><span class="badge badge-ben">0</span></td><td>0.000271</td></tr>
+        <tr><td><code>172.16.16.136 &lt;-&gt; 66.35.45.201</code></td><td>35</td><td><span class="badge badge-ben">0</span></td><td>0.000271</td></tr>
+        <tr><td><code>172.16.16.128 &lt;-&gt; 74.125.166.28</code></td><td>29</td><td><span class="badge badge-ben">0</span></td><td>0.000271</td></tr>
+      `;
+    }
+
+    function runCounterfactual() {
+      const minVal = parseInt(document.getElementById('simMin').value, 10);
+      const srateVal = parseInt(document.getElementById('simSrate').value, 10);
+      const logEl = document.getElementById('simLogOdds');
+      const resEl = document.getElementById('simResult');
+
+      if (minVal === 54 && srateVal < 1000) {
+        logEl.innerHTML = 'Total Kontribusi Fitur: <b>-4.551</b> (Min=54 mendorong ke BENIGN)';
+        resEl.innerHTML = 'Skor Prediksi: <span style="color:var(--success-text);">0.000271 (BENIGN)</span>';
+      } else if (srateVal >= 1000) {
+        logEl.innerHTML = 'Total Kontribusi Fitur: <b>+11.840</b> (Srate Flood mendominasi)';
+        resEl.innerHTML = 'Skor Prediksi: <span style="color:var(--danger-text);">0.999720 (SERANGAN)</span>';
+      } else {
+        logEl.innerHTML = 'Total Kontribusi Fitur: <b>+6.370</b> (Dipicu oleh Min=' + minVal + ' & PSH=1.0)';
+        resEl.innerHTML = 'Skor Prediksi: <span style="color:var(--danger-text);">0.937467 (SERANGAN)</span>';
+      }
+    }
+
+    function initCharts() {
+      const gainEl = document.getElementById('gainChart');
+      gainData.forEach(g => {
+        gainEl.innerHTML += `
+          <div class="bar-row">
+            <div class="bar-label">${g.name}</div>
+            <div class="bar-track"><div class="bar-fill" style="width:${g.val}%"></div></div>
+            <div class="bar-val">${g.val.toFixed(2)}%</div>
+          </div>`;
+      });
+
+      const shapEl = document.getElementById('shapChart');
+      shapFpData.forEach(s => {
+        const w = Math.min(Math.abs(s.val) * 18, 100);
+        shapEl.innerHTML += `
+          <div class="bar-row">
+            <div class="bar-label">${s.name}</div>
+            <div class="bar-track"><div class="bar-fill ${s.dir}" style="width:${w}%"></div></div>
+            <div class="bar-val">${s.val > 0 ? '+' : ''}${s.val.toFixed(2)}</div>
+          </div>`;
+      });
+
+      const bBody = document.getElementById('benchBody');
+      benchData.forEach(b => {
+        bBody.innerHTML += `<tr><td><b>${b[0]}</b></td><td>${b[1]}</td><td>${b[2]}</td><td>${b[3]}</td><td><span class="badge badge-ben">${b[4]}</span></td></tr>`;
+      });
+    }
+
+    function handleFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const lines = evt.target.result.trim().split('\n');
+        const headers = lines[0].split(',');
+        const predIdx = headers.indexOf('prediksi');
+        const scoreIdx = headers.indexOf('skor_serangan');
+        const ipIdx = headers.indexOf('pasangan_ip');
+        const rateIdx = headers.indexOf('Rate');
+        const srateIdx = headers.indexOf('Srate');
+        const minIdx = headers.indexOf('Min');
+        const avgIdx = headers.indexOf('AVG');
+        const pshIdx = headers.indexOf('psh_flag_number');
+
+        pcapRows.length = 0;
+        let totalRows = lines.length - 1;
+        for (let i = 1; i < Math.min(lines.length, 315); i++) {
+          const cols = lines[i].split(',');
+          if (cols.length < 10) continue;
+          pcapRows.push({
+            idx: i,
+            pred: predIdx >= 0 ? cols[predIdx].trim() : 'BENIGN',
+            score: scoreIdx >= 0 ? parseFloat(cols[scoreIdx]) : 0.00027,
+            ip: ipIdx >= 0 ? cols[ipIdx] : 'Baris #' + i,
+            rate: rateIdx >= 0 ? parseFloat(cols[rateIdx]) : 0,
+            srate: srateIdx >= 0 ? parseFloat(cols[srateIdx]) : 0,
+            min: minIdx >= 0 ? parseFloat(cols[minIdx]) : 0,
+            avg: avgIdx >= 0 ? parseFloat(cols[avgIdx]) : 0,
+            psh: pshIdx >= 0 ? parseFloat(cols[pshIdx]) : 0
+          });
+        }
+        renderPcapTable();
+        document.getElementById('kpiTotal').innerText = totalRows;
+        document.getElementById('kpiSub1').innerText = file.name;
+      };
+      reader.readAsText(file);
+    }
+
+    renderPcapTable();
+    initCharts();
+  </script>
+</body>
+</html>

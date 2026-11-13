@@ -24,16 +24,23 @@ Recall 100% di 13 dari 14 jenis serangan. Satu-satunya yang lolos: TFTP (12 dari
 | `eval.py` | Evaluasi test set, recall per jenis serangan, feature importance |
 | `cek_lolos.py` | Analisis serangan yang lolos |
 | `predict.py` | Demo inferensi: CSV fitur -> SERANGAN/BENIGN |
+| `predict_pcap.py` | Inferensi langsung dari file PCAP/PCAPNG -> 44 fitur -> SERANGAN/BENIGN |
+| `bedah_fp.py`, `bedah_fp2.py` | Analisis kontribusi fitur (TreeSHAP) dan uji *counterfactual* pada PCAP eksternal |
+| `app.py` | Dashboard UI interaktif (Streamlit) untuk deteksi CSV/PCAP & visualisasi TreeSHAP |
+| `dashboard_ddos.html` | Dashboard HTML mandiri untuk melihat hasil deteksi & evaluasi secara instan |
 | `model_lgb_final_44fitur.txt` | Model final |
 | `model_lgb_final_44fitur.txt.threshold.json` | Threshold operasional (0.2) |
 | `fitur_terpilih_44.json` | Daftar 44 fitur |
 | `sample_test.csv` | Sampel kecil data test untuk demo |
+| `lotsofweb.pcapng`, `hasil_pcap.csv` | Sampel PCAP eksternal (trafik web normal) dan hasil ekstraksi prediksinya |
 
 ## Cara menjalankan
 
 ```bash
 pip install -r requirements.txt
 python predict.py sample_test.csv
+python predict_pcap.py lotsofweb.pcapng
+streamlit run app.py
 python eval.py   # butuh csv_bersih/ (lihat bagian Data)
 ```
 
